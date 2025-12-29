@@ -100,3 +100,58 @@ resource "aws_eks_node_group" "eks_nodes" {
     aws_iam_role_policy_attachment.eks_node_AmazonEKS_CNI_Policy
   ]  
 }
+
+#OID for the cluster
+
+data "tls_certificate" "eks_cluster" {
+  url = aws_eks_cluster.eks.identity[0].oidc[0].issuer
+}
+
+resource "aws_iam_openid_connect_provider" "eks" {
+  client_id_list = [ "sts.amazonaws.com" ]
+  thumbprint_list = [ data.tls_certificate.eks.certificates[0].sha1_fingerprint ]
+  url = aws_eks_cluster.eks.identity[0].oidc[0].issuer
+  
+}
+
+data "aws_iam_policy_document" "eks_assume_role_with_oidc" {
+  statement {
+    actions = [ "sts:AssumeRoleWithWebIdentity" ]
+    effect = "Allow"
+  
+
+  principals {
+    type = "Federated"
+    identifiers = [aws_iam_openid_connect_provider.eks.arn]
+}
+  condition {
+    test = "StringEquals"
+    variable = "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:aud"
+    values = [ "sts.amazonaws.com" ]
+  }
+  }
+}
+
+resource "aws_iam_role" "eks_service_accoount_role" {
+  name = "eks-service-account-role"
+  assume_role_policy = data.aws_iam_policy_document.eks_assume_role_with_oidc.json
+  
+}
+
+data "aws_iam_policy_document" "service_account_policy" {
+  statement {
+    effect = "Allow"
+    actions = [ "s3:GetObject", "s3:PutObject" ]
+  }
+}
+
+resource "aws_iam_policy" "service_account_policy" {
+  name = "eks-service-account-policy"
+  policy = data.aws_iam_policy_document.service_account_policy.json
+  
+}
+
+resource "aws_iam_role_policy_attachment" "service_account_policy" {
+  role       = aws_iam_role.eks_service_account_role.name
+  policy_arn = aws_iam_policy.service_account_policy.arn
+}
