@@ -10,13 +10,13 @@ resource "aws_ecr_repository" "ecr_app" {
 resource "aws_ecr_lifecycle_policy" "ecr_app" {
     repository = aws_ecr_repository.ecr_app.name
     
-    policy = jsondecode({
+    policy = jsonencode({
         rules = [
             {
                 rulePriority = 1
-                description = "Expire untagged images older than 30 days"
+                description = "Keep last 10 tagged images "
                 selection = {
-                    tagStatus = "untagged"
+                    tagStatus = "tagged"
                     tagPrefixList = ["prod-"]
                     countType = "imageCountMoreThan"
                     countNumber = 10
